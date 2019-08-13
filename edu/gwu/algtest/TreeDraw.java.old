@@ -1,0 +1,370 @@
+package edu.gwu.algtest;
+
+import edu.gwu.algtest.*;
+import java.awt.*;
+import java.awt.event.*;
+
+public class TreeDraw extends Frame implements ActionListener {
+
+  int maxDepth = 0;
+  TreeNodeInfo[] treeArray;
+  Label topLabel;
+  Label secondLabel;
+  Panel topPanel;
+  Button nextButton;
+  Canvas canvas;
+  Panel bottomPanel;
+  boolean buttonPressed = false;
+
+  int cheight, cwidth;
+  int radius, diameter, vspace;
+  int storedDepth;
+  
+  boolean recomputeRadius = true;
+
+  Font labelFont = new Font ("Serif", Font.BOLD | Font.ITALIC, 18);
+  Font textFont = new Font ("SansSerif", Font.BOLD, 14);
+
+  public void init ()
+  {
+    this.setBackground (Color.white);
+    this.setLayout (new BorderLayout());
+    topPanel = new Panel ();
+    topPanel.setLayout (new GridLayout (2,1));
+    topLabel = new Label();
+    topLabel.setFont (labelFont);
+    topLabel.setForeground (Color.blue);
+    topPanel.add (topLabel);
+    secondLabel = new Label ();
+    secondLabel.setFont (labelFont);
+    secondLabel.setForeground (Color.red);
+    topPanel.add (secondLabel);
+    this.add (topPanel, BorderLayout.NORTH);
+    nextButton = new Button ("Next");
+    nextButton.addActionListener (this);
+    nextButton.setFont (labelFont);
+    Panel bottomPanel = new Panel ();
+    bottomPanel.add (nextButton);
+    Button quitB = new Button ("Quit");
+    quitB.setFont (labelFont);
+    quitB.addActionListener (
+       new ActionListener () {
+           public void actionPerformed (ActionEvent a)
+           {
+             System.exit(0);
+           }
+       }
+    );
+    bottomPanel.add (quitB);
+    
+    this.add (bottomPanel, BorderLayout.SOUTH);
+    canvas = new Canvas ();
+    canvas.setBackground (Color.white);
+    this.add (canvas, BorderLayout.CENTER);
+  }
+  
+  public TreeDraw () 
+  {
+    this.setSize (600, 500);
+    init ();
+    this.setVisible (true);
+  }
+
+  int parent (int i)
+  {
+    return ((i-1) / 2);
+  }
+  
+  int left (int i)
+  {
+    return 2*i + 1;
+  }
+  
+  int right (int i)
+  {
+    return 2*i + 2;
+  }
+
+  int depth (int i)
+  {
+    int k = i;
+    int d = 0;
+    while (k != 0) {
+      k = parent (k);
+      d ++;
+    }
+    return d;
+  }
+  
+  void findMaxDepth (TreeNode root, int depth)
+  {
+    if (depth > maxDepth)
+      maxDepth = depth;
+    if (root.left != null)
+      findMaxDepth (root.left, depth+1);
+    if (root.right != null)
+      findMaxDepth (root.right, depth+1);
+  }
+
+  void fillTreeArray (TreeNode root, int index, int depth)
+  {
+    //System.out.println ("fillTreeArr: index=" + index + " d=" + depth + " root=" + root);
+    treeArray [index] = new TreeNodeInfo ();
+    treeArray [index].node = root;
+    treeArray [index].key = root.key;
+    treeArray [index].depth = depth;
+    treeArray [index].left = left (index);
+    treeArray [index].right = left (index);
+    treeArray [index].mark = root.mark;
+    treeArray [index].markLeft = root.markLeft;
+    treeArray [index].markRight = root.markRight;
+    treeArray [index].visible = true;
+    if (root.left != null)
+      fillTreeArray (root.left, left (index), depth+1);
+    if (root.right != null)
+      fillTreeArray (root.right, right (index), depth+1);
+    
+  }
+  
+
+  void makeTreeArray (TreeNode root)
+  {
+    // Find max depth:
+    maxDepth = 0;
+    findMaxDepth (root, 0);
+    // Find array size:
+    int last = 0;
+    for (int i=0; i<maxDepth; i++)
+      last = right (last);
+    //System.out.println ("makeTreeArr: maxD=" + maxDepth + " last=" + last);
+    
+    treeArray = new TreeNodeInfo [last+1];
+    for (int i=0; i<treeArray.length; i++) {
+      treeArray[i] = new TreeNodeInfo ();
+      treeArray[i].visible = false;
+      treeArray[i].depth = depth(i);
+    }
+    
+    // Populate with data:
+    fillTreeArray (root, 0, 0);
+  }
+
+  int powerOfTwo (int k)
+  {
+    int power = 1;
+    int n = 0;
+    while (n < k) {
+      n ++;
+      power = power * 2;
+    }
+    return power;
+  }
+  
+  public void recomputeRadius ()
+  {
+    recomputeRadius = true;
+  }
+  
+  public void computeRadius (int depth)
+  {
+    Dimension D = canvas.getSize();
+    diameter = (int) ((0.3) * (double) (D.height/(depth+1)));
+    radius = diameter / 2;
+    vspace = (int) ( (0.7) * (double) (D.height/(depth+1)));
+    recomputeRadius = false;
+    storedDepth = depth;
+  }
+
+  void computeCenters ()
+  {
+    int level = 0;
+    int numNodesInLevel = powerOfTwo (level);
+    Dimension D = canvas.getSize();
+    int numGaps = numNodesInLevel + 1;
+    int gap = D.width / numGaps;
+    if (recomputeRadius) {
+      diameter = (int) ((0.3) * (double) (D.height/(maxDepth+1)));
+      radius = diameter / 2;
+      vspace = (int) ( (0.7) * (double) (D.height/(maxDepth+1)));
+      recomputeRadius = false;
+    }
+    int y = radius + vspace;
+    //System.out.println ("COMPUTECENTERS: before:");
+    //print (treeArray);
+    treeArray[0].x = D.width / 2;
+    treeArray[0].y = y;
+    for (int i=1; i<treeArray.length; i++) {
+      if (treeArray[i] != null) {
+        if (treeArray[i].depth > level) {
+          level ++;
+          numNodesInLevel = powerOfTwo (level);
+          numGaps = numNodesInLevel + 1;
+          gap = D.width / numGaps;
+          y += vspace + radius;
+        }
+        treeArray[i].y = y;
+        int j = 0;
+        while (treeArray[j].depth != treeArray[i].depth)
+          j ++;
+        treeArray[i].x = (i - j + 1) * gap;
+      }
+    }
+    // System.out.println ("COMPUTECENTERS: after:");
+    // print (treeArray);
+  }
+  
+  public void drawTree (TreeNode root, String msg, boolean clear)
+  {
+    findMaxDepth (root, 0);
+    if (maxDepth > storedDepth)
+      computeRadius (maxDepth);
+    makeTreeArray (root);
+    drawTree (canvas.getGraphics(), msg);
+    if (clear)
+      clearMarks (root);
+  }
+
+  public void clearMarks (TreeNode root)
+  {
+    if (root != null) {
+      root.mark = false;
+      root.markLeft = false;
+      root.markRight = false;
+      clearMarks (root.left);
+      clearMarks (root.right);
+    }
+  }
+
+  public void clearMarks ()
+  {
+    for (int i=0; i<treeArray.length; i++) {
+      if (treeArray[i] != null) {
+        treeArray[i].mark = false;
+        treeArray[i].markLeft = false;
+        treeArray[i].markRight = false;
+      }
+    }
+  }
+  
+
+  public void drawTree (Comparable[] keyArray, int maxSize, int size, String msg, int nodeIndex, int left, int right)
+  {
+    maxDepth = depth (size-1);
+    // System.out.println ("drawTree: comp: maxS=" + maxSize + " size=" + size + " msg=" + msg + " maxD=" + maxDepth);
+    // First, make the treeArray.
+    treeArray = new TreeNodeInfo [maxSize];
+    for (int i=0; i<size; i++) {
+      treeArray[i] = new TreeNodeInfo ();
+      treeArray[i].key = keyArray[i];
+      treeArray[i].left = left(i);
+      treeArray[i].right = right(i);
+      treeArray[i].parent = parent(i);
+      treeArray[i].depth = depth (i);
+      treeArray[i].visible = true;
+    }
+    //print (treeArray);
+    clearMarks();
+    treeArray[nodeIndex].mark = true;
+    drawTree (canvas.getGraphics(), msg);
+  }
+  
+  void print (TreeNodeInfo[] treeArray)
+  {
+    for (int i=0; i<treeArray.length; i++){
+      if (treeArray[i] != null)
+        System.out.println ("i=" + i + ": " + treeArray[i]);
+    }
+  }
+
+  public void setTopLabel (String msg)
+  {
+    topLabel.setText (msg);
+  }
+
+  void drawTree (Graphics g, String msg)
+  {
+    buttonPressed = false;
+    
+    secondLabel.setText ("    " + msg);
+    // Assume correct data in array.
+    computeCenters ();
+
+    // Clear.
+    g.setColor (Color.white);
+    g.fillRect (0, 0, cwidth, cheight);
+    
+    // Draw lines.
+    g.setColor (Color.black);
+    for (int i=0; i<treeArray.length; i++) {
+      if ( (treeArray[i] != null) && (treeArray[i].visible) ) {
+        // Draw arcs to children.
+        int L = left (i);
+        int R = right (i);
+        if ( (L < treeArray.length) && (treeArray[L] != null) && (treeArray[L].visible) ) {
+          if (treeArray[i].markLeft)
+            g.setColor (Color.red);
+          else
+            g.setColor (Color.black);
+          g.drawLine (treeArray[i].x, treeArray[i].y, treeArray[L].x, treeArray[L].y);
+          g.drawLine (treeArray[i].x-1, treeArray[i].y, treeArray[L].x-1, treeArray[L].y);
+          g.drawLine (treeArray[i].x+1, treeArray[i].y, treeArray[L].x+1, treeArray[L].y);
+        }
+        if ( (R < treeArray.length) && (treeArray[R] != null) && (treeArray[R].visible) ) {
+          if (treeArray[i].markRight)
+            g.setColor (Color.red);
+          else
+            g.setColor (Color.black);
+          g.drawLine (treeArray[i].x, treeArray[i].y, treeArray[R].x, treeArray[R].y);
+          g.drawLine (treeArray[i].x-1, treeArray[i].y, treeArray[R].x-1, treeArray[R].y);
+          g.drawLine (treeArray[i].x+1, treeArray[i].y, treeArray[R].x+1, treeArray[R].y);
+        }
+        
+      } // end-if
+    } // end-for
+
+    // Draw circles
+    for (int i=0; i<treeArray.length; i++) {
+      if ( (treeArray[i] != null) && (treeArray[i].visible) ) {
+        g.setColor (Color.yellow);
+        g.fillOval (treeArray[i].x-radius, treeArray[i].y-radius, diameter, diameter);
+        if (treeArray[i].mark)
+          g.setColor (Color.red);
+        else
+          g.setColor (Color.black);
+        g.drawOval (treeArray[i].x-radius, treeArray[i].y-radius, diameter, diameter);
+        g.drawOval (treeArray[i].x-radius+1, treeArray[i].y-radius+1, diameter-2, diameter-2);
+        g.setColor (Color.black);
+        g.setFont (textFont);
+        int shift = 3;
+        g.drawString ((String)treeArray[i].key, treeArray[i].x-shift, treeArray[i].y+shift);
+        /*String str = "i=" + i  + ":" + treeArray[i].x;
+         g.drawString (str, treeArray[i].x, treeArray[i].y);*/
+      }
+    }
+
+    while (! buttonPressed) {
+      try {
+        Thread.sleep (100);
+      }
+      catch (Exception e) {
+        e.printStackTrace();
+      }
+    }
+  }
+
+  public void paint (Graphics g)
+  {
+    Dimension D = canvas.getSize();
+    cheight = D.height;
+    cwidth = D.width;
+    //Graphics cg = canvas.getGraphics ();
+    //drawTree (cg, topLabel.getText());
+  }
+
+  public void actionPerformed (ActionEvent a)
+  {
+    buttonPressed = true;
+    //System.out.println ("NEXT button pressed");
+  }
+
+}

@@ -1,0 +1,14 @@
+
+* How to write a new problem:
+  1.   Go to AlgorithmTest.java and add an if-statement for the new
+       problem that creates a Tester instance.
+  2.   Create an interface, e.g., WordSearchAlgorithm.java that
+       implementors will use.
+  3.   Create a Tester for the problem, such as WordSearchTester.java
+       - Modify labels on top.
+       - Make variable "alg" of the type of the interface above.
+       - Change constructor, read parameters
+       - Modify setAlgorithm to check instance.
+  4.   Implement correctness tests in testCorrectness()
+  5.   Implement the appropriate generatePerformanceData() method.
+  6.   Implement the runPerformanceTest() method.

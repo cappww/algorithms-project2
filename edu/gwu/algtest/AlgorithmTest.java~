@@ -1,0 +1,377 @@
+
+package edu.gwu.algtest;
+
+import edu.gwu.algtest.*;
+import edu.gwu.util.*;
+import edu.gwu.debug.Debug;
+import java.util.*;
+import java.io.*;
+
+/**
+ * Class <code>AlgorithmTest</code> has most of the code dealing
+ * with generic algorithm testing. Particular testers are loaded
+ * depending on the type of algorithm, are invoked and results
+ * displayed.
+ *
+ * @author "Rahul Simha"
+ */
+
+public class AlgorithmTest {
+
+  static boolean debug = false;
+
+  String problemType;           // What kind of problem?
+  int numProblemParameters;     // How many parameters for prob. size?
+  int numAlgorithms;            // How many algorithms at a time?
+  Algorithm[] algorithms;       // Data structure for algorithms.
+  boolean testCorrectness;      // Should we test correctness?
+  boolean testPerformance;      // Should we test performance?
+  int numTests;                 // How many performance tests?
+  int[][] testSizes;            // List of sizes for each prob. parameter.
+  int runsPerTest;              // Runs per test if averaging is used.
+  boolean printToScreen;        // Print stuff to screen?
+  boolean display = false;      // Display in GUI?
+  int quiescentTime = 5;     
+
+  FunctionScaler funcScaler;
+  PropertyExtractor algprops;
+  boolean specialTest = false;
+
+  
+  public static void main (String[] argv)
+  {
+    try {
+      if (argv == null) {
+        System.out.println ("\nUsage: java AlgorithmTest <properties-file>");
+        System.out.println ("Example: java AlgorithmTest alg.props");
+        System.exit (0);
+      }
+      if ( (argv.length == 0) || (argv.length > 1) ) {
+        System.out.println ("\nUsage: java AlgorithmTest <properties-file>");
+        System.out.println ("Example: java AlgorithmTest alg.props");
+        System.exit (0);
+      }
+      
+      AlgorithmTest algTest = new AlgorithmTest ();
+      // Get the properties file.
+      System.out.println ("LOADING PROPERTIES FROM FILE " + argv[0]);
+      algTest.readProperties (argv[0]);
+      
+      // Process the specified tests.
+      System.out.println ("PROCESSING ... ");
+      algTest.process ();
+      System.out.println ("PROCESSING COMPLETED");
+
+      // Wind up.
+      Debug.close();
+    }
+    catch (Exception e) {
+      System.out.println ("Exiting Main: Exception: ");
+      e.printStackTrace();
+      Debug.close();
+      System.exit (1);
+    }
+  }
+
+
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // ERROR AND INPUT HANDLING
+
+  void error (String errString)
+    throws AlgorithmTestException 
+  {
+    throw new AlgorithmTestException (errString);
+  }
+
+
+  void readProperties (String propFileName)
+    throws AlgorithmTestException, ClassNotFoundException, InstantiationException,
+    IllegalAccessException, UtilException
+  {
+    File f = new File ("");
+    String pathName = f.getAbsolutePath();
+    String fullPathName = pathName + "/" + propFileName;
+    System.out.println (" => Current directory=" + pathName + "\n => Full pathname=" + fullPathName);
+    Debug.println (" => Current directory=" + pathName + "\n => Full pathname=" + fullPathName);
+    File propFile = new File (fullPathName);
+
+    algprops = new PropertyExtractor (propFile);
+
+    if (algprops == null) {
+      error ("algprops==null");
+    }
+
+    System.out.println (" => Properties file contains " + algprops.size() + " properties");
+    Debug.println (" => Properties file contains " + algprops.size() + " properties");
+
+    
+    // Now read properties.
+    problemType = algprops.getStringProperty ("problemType");
+    numProblemParameters = algprops.getIntProperty ("numProblemParameters");
+    numAlgorithms = algprops.getIntProperty ("numAlgorithms");
+    quiescentTime = algprops.getIntProperty ("quiescentTime");
+    debug = (algprops.getStringProperty ("debug")).equalsIgnoreCase ("On");
+    testCorrectness = (algprops.getStringProperty ("testCorrectness")).equalsIgnoreCase ("true");
+    testPerformance = (algprops.getStringProperty ("testPerformance")).equalsIgnoreCase ("true");
+    specialTest = (algprops.getStringProperty ("specialTest")).equalsIgnoreCase ("true");
+
+    if ( (!testCorrectness) && (!testPerformance) ) 
+      throw new AlgorithmTestException ("AlgorithmTest: must test at least one of Correctness or Performance");
+
+    if (testPerformance) {
+      runsPerTest = algprops.getIntProperty ("runsPerTest");
+      numTests = algprops.getIntProperty ("numTests");
+      // Now, get each test size.
+      testSizes = new int [numProblemParameters][];
+      for (int i=0; i<numProblemParameters; i++) {
+        testSizes[i] = new int [numTests];
+        for (int j=0; j<numTests; j++) {
+          testSizes[i][j] = algprops.getIntProperty ("param" + i + "_testSize" + j);
+        }
+      }
+      
+    }
+    printToScreen = (algprops.getStringProperty ("printToScreen")).equalsIgnoreCase ("true");
+    display = (algprops.getStringProperty ("display")).equalsIgnoreCase ("true");
+
+    // Print properties
+    algprops.printPropertiesToDebug();
+    
+    // Now load the algorithms.
+    algorithms = new Algorithm [numAlgorithms];
+    funcScaler = new FunctionScaler (numAlgorithms);
+
+    for (int i=0; i<numAlgorithms; i++) {
+      // Read in the algorithm class file.
+      String algName = algprops.getStringProperty ("alg" + i);
+      Debug.println ("Loading algorithm# " + i + " name=" + algName + " ... ");
+      Class algClass = Class.forName (algName);
+      algorithms[i] = (Algorithm) algClass.newInstance();
+      // System.out.println ("Algorithm #" + i + ": " + algorithms[i]);
+      // Pass the properties instance to the algorithm
+      algorithms[i].setPropertyExtractor (i, algprops);
+      // Read scale stuff:
+      String scaleStr = algprops.getStringProperty ("A" + i);
+      String funcStr = algprops.getStringProperty ("scale" + i);
+      // System.out.println ("alg=" + i + " scaleStr=" + scaleStr + " funcStr=" + funcStr);
+      funcScaler.setFunction (i, scaleStr, funcStr);
+                              
+      Debug.println (" ... completed.");
+      //** Need to worry about directory here.
+    }
+
+  }
+  
+  //
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // PROCESSING AND TESTING
+
+  void process ()
+    throws AlgorithmTestException
+  {
+    GenericTester tester = null;
+    // We now need to select according to problem type
+    if (problemType.equalsIgnoreCase ("sorting")) {
+      tester = new SortingTester (algprops);
+    }
+    else if (problemType.equalsIgnoreCase ("partitioning")) {
+      tester = new PartitionTester (algprops);
+    }
+    else if (problemType.equalsIgnoreCase ("search")) {
+      tester = new SearchTester (algprops);
+    }
+    else {
+      throw new AlgorithmTestException ("Unknown problem type: " + problemType);
+    }
+    testAlgorithm (tester);
+  }
+  
+
+  void testAlgorithm (GenericTester tester)
+    throws AlgorithmTestException
+  {
+    // Display
+    AlgorithmDisplay algDisplay = null;
+    AlgorithmDisplay specialDisplay = null;
+    double[] X = new double [numTests];
+    double[] Y = new double [numTests];
+
+    if (testPerformance) {
+      algDisplay = new AlgorithmDisplay (numAlgorithms, numTests);
+      algDisplay.setTitle (tester.getTitle());
+
+      // Space to collect data.
+      for (int t=0; t<numTests; t++) {
+        //** Might want to allow for plot against the other parameter.
+        X[t] = testSizes[0][t];
+      }
+      algDisplay.setXVector (X);
+      algDisplay.setXaxisLabel (tester.getXaxisLabel());
+      if (tester.ifMetric())
+        algDisplay.setYaxisLabel (tester.getYaxisLabel());
+      else
+        algDisplay.setYaxisLabel ("Time: seconds");
+
+      // Special tests?
+      if ( (specialTest) && (tester.ifSpecialTest()) ){
+        specialDisplay = new AlgorithmDisplay (numAlgorithms, numTests);
+        specialDisplay.setTitle ("Window2: " + tester.getTitle() + "- special tests");
+        specialDisplay.setXVector (X);
+        specialDisplay.setXaxisLabel (tester.getXaxisLabel());
+        if (tester.ifMetric())
+          specialDisplay.setYaxisLabel (tester.getYaxisLabel());
+        else
+          specialDisplay.setYaxisLabel ("Time: seconds");
+      }
+
+    } // end-if
+    
+    
+    for (int alg=0; alg<numAlgorithms; alg++) {
+      tester.setAlgorithm (algorithms[alg]);
+
+      // Place algorithm in display
+      String scaleStr = funcScaler.getScaleFunctionString (alg);
+      String algStr = algorithms[alg].getName();
+      if (scaleStr != null)
+        algStr += "    (Scaled by: " + scaleStr + ")";
+
+      System.out.println ("ALGORITHM: " + algStr);
+      Debug.println ("ALGORITHM: " + algStr);
+      
+      // Correctness first.
+      if (testCorrectness)
+        tester.testCorrectness ();
+
+      if (testPerformance) {
+        // Reset seed.
+        tester.resetSeed();
+
+        int algID = algDisplay.addAlgorithm (algStr);
+        int specialID = -1;
+        if ( (specialTest) && (tester.ifSpecialTest()) )
+          specialID = specialDisplay.addAlgorithm (algStr);
+      
+        // Now run the tests
+        for (int t=0; t<numTests; t++) {
+          // Special tests:
+          if ( (specialTest) && (tester.ifSpecialTest()) ) {
+            double y = this.runSpecialTest (tester, algorithms[alg], t);
+            specialDisplay.addNewYValue (specialID, y);
+          }
+          
+          // Performance tests:
+          Y[t] = this.runPerformanceTest (tester, algorithms[alg], t);
+          
+          // Display:
+          double scaledValue = funcScaler.getScaleValue (algID, X[t], Y[t]);
+          algDisplay.addNewYValue (algID, scaledValue);
+          System.out.println (" => Next Y-value: " + Y[t] + " scaled: " + scaledValue);
+        } // end-for-tests
+      } // end-if-testPerformance
+      
+    } // end-for-algorithms
+  }
+  
+  void quiescent ()
+    throws AlgorithmTestException
+  {    
+    try {
+      Runtime runtime = Runtime.getRuntime();
+      // System.out.println ("Current free memory: " + runtime.freeMemory());
+      runtime.gc();
+      System.out.print ("Waiting " + quiescentTime + " seconds for garbage collection ...");
+      Thread.sleep (quiescentTime*1000);
+      System.out.println (" Free memory: " + runtime.freeMemory());
+    }
+    catch (InterruptedException e) {
+      throw new AlgorithmTestException ("Thread sleep problem: ex=" + e);
+    }
+    
+  }
+  
+
+  double runSpecialTest (GenericTester tester, Algorithm alg, int testNum)
+    throws AlgorithmTestException
+  {
+    // Start timing.
+    long startTime = System.currentTimeMillis();
+
+    CostMetric metric = null;
+    if (numProblemParameters == 1)
+      metric = tester.runSpecialTest (testSizes[0][testNum]);
+    else if (numProblemParameters == 2)
+      metric = tester.runSpecialTest (testSizes[0][testNum], testSizes[1][testNum]);
+    else {
+      System.out.println ("ERROR: At most 2 problem parameters supported");
+      System.exit(0);
+    }
+          
+    long timeTaken = System.currentTimeMillis() - startTime;
+
+    // Stats.
+    double y;
+    if (! tester.ifMetric()) {
+      y = (double) timeTaken / (double) 1000;
+    }
+    else {
+      // Cost metric stuff
+      if (metric.metricType == CostMetric.INTEGER)
+        y = metric.intValue;
+      else if (metric.metricType == CostMetric.DOUBLE)
+        y = metric.doubleValue;
+      else 
+        throw new AlgorithmTestException ("AlgorithmTest.testAlgorithm(): invalid metric: " + metric);
+    }
+    return y;
+  }
+  
+
+  double runPerformanceTest (GenericTester tester, Algorithm alg, int testNum)
+    throws AlgorithmTestException
+  {
+    // Multiple runs.
+    double totalY = 0;
+    for (int i=0; i<runsPerTest; i++) {
+      if (numProblemParameters == 1)
+        tester.generatePerformanceData (testSizes[0][testNum]);
+      else if (numProblemParameters == 2)
+        tester.generatePerformanceData (testSizes[0][testNum], testSizes[1][testNum]);
+      else {
+        System.out.println ("ERROR: At most 2 problem parameters supported");
+        System.exit(0);
+      }
+          
+      // Perform multiple runs if needed.
+      // Garbage-collect.
+      quiescent ();
+      // Start timing.
+      long startTime = System.currentTimeMillis();
+      // Run
+      CostMetric metric = tester.runPerformanceTest();
+      long timeTaken = System.currentTimeMillis() - startTime;
+      // Stats.
+      double y;
+      if (! tester.ifMetric()) {
+        y = (double) timeTaken / (double) 1000;
+      }
+      else {
+        // Cost metric stuff
+        if (metric.metricType == CostMetric.INTEGER)
+          y = metric.intValue;
+        else if (metric.metricType == CostMetric.DOUBLE)
+          y = metric.doubleValue;
+        else 
+          throw new AlgorithmTestException ("AlgorithmTest.testAlgorithm(): invalid metric: " + metric);
+      }
+      totalY += y;
+    } // end-for-i
+    
+    // Return average.
+    return (totalY / runsPerTest);
+  }
+  
+
+}

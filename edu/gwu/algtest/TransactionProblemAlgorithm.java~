@@ -1,0 +1,25 @@
+
+package edu.gwu.algtest;
+
+import edu.gwu.algtest.*;
+
+/**
+ * Interface <code>TransactionProblemAlgorithm</code> is to be implemented
+ * by algorithms that remove duplicates from an array of integers,
+ * returning a new array without duplicates and of the right size.
+ *
+ * @see Algorithm
+ */
+
+public interface TransactionProblemAlgorithm extends Algorithm {
+
+
+  /**
+   * Method <code>removeDuplicates</code> is given an array of
+   * integers and should return a new, possibly smaller array
+   * with all duplicates removed.
+   */
+
+  public int[] removeDuplicates (int[] A);
+
+}
